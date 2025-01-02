@@ -1,7 +1,7 @@
 # **SemiX - Open-Source Semiconductor Simulation Toolkit**
 
 
-SemiX is a comprehensive open-source Python package for simulating and analyzing the behavior of semiconductor devices. Designed for researchers, students, and engineers, SemiX provides intuitive APIs and visualization tools for exploring the physics of diodes, transistors, and other semiconductor components. The package emphasizes accessibility and accuracy, making it an essential tool for those working in semiconductor physics and electronic design.
+SemiX is a comprehensive open-source Python package for simulating and analyzing the behavior of semiconductor devices. Designed for researchers, students, and engineers, SemiX provides visualization methods for exploring the physics of diodes, transistors, and other semiconductor components. The package emphasizes accessibility and accuracy, making it an essential tool for those working in semiconductor physics and electronic design.
 
 ---
 
