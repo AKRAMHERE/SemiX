@@ -1,0 +1,12 @@
+name: SemiX
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - matplotlib
+  - scipy
+  - pandas
+  - pip
+  - pip:
+      - some_custom_package
