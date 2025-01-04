@@ -8,5 +8,3 @@ dependencies:
   - scipy
   - pandas
   - pip
-  - pip:
-      - some_custom_package
