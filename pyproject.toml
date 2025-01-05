@@ -1,0 +1,45 @@
+[project]
+name = "SemiX"
+version = "0.1.0"
+authors = [
+  { name="Syed Akram", email="syedakram2002@gmail.com" }, # Update with your real email
+]
+description = "An open-source Python package for semiconductor device simulation and analysis."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+dependencies = [
+    "numpy>=1.21.0",
+    "matplotlib>=3.4.0",
+    "scipy>=1.7.0"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "flake8"]
+
+[project.urls]
+Homepage = "https://github.com/syedakram/SemiX"
+Documentation = "https://github.com/syedakram/SemiX/wiki"
+Issues = "https://github.com/syedakram/SemiX/issues"
+Source = "https://github.com/syedakram/SemiX"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
