@@ -7,6 +7,7 @@ import csv
 
 
 class Diode:
+    BOLTZMANN_CONSTANT = 1.380649e-23  # in J/K
     MATERIAL_PROPERTIES = {
         "Silicon": {
             "vt": 0.026,
@@ -15,6 +16,7 @@ class Diode:
             "cut_in_voltage": 0.7,
             "breakdown_voltage": 1000,  # Reverse breakdown voltage (V)
             "bandgap_energy": 1.12,  # Bandgap energy (eV)
+            "eps": 11.7 * 8.854e-12,  # Permittivity of Silicon (F/m)
         },
         "Germanium": {
             "vt": 0.0258,
@@ -23,6 +25,7 @@ class Diode:
             "cut_in_voltage": 0.3,
             "breakdown_voltage": 300,  # Reverse breakdown voltage (V)
             "bandgap_energy": 0.66,  # Bandgap energy (eV)
+            "eps": 16.0 * 8.854e-12,  # Permittivity of Germanium (F/m)
         },
         "Gallium Arsenide": {
             "vt": 0.027,  # Thermal voltage at 300 K
@@ -31,11 +34,28 @@ class Diode:
             "cut_in_voltage": 1.2,
             "breakdown_voltage": 500,  # Reverse breakdown voltage (V)
             "bandgap_energy": 1.42,  # Bandgap energy (eV)
+            "eps": 12.9 * 8.854e-12,  # Permittivity of GaAs (F/m)
         },
     }
 
     def __init__(self, material, temperature=300, custom_props=None):
         """Initialize the Diode class with material properties or user-defined properties."""
+        self.k = 1.380649e-23  # Boltzmann Constant (J/K)
+        self.q = 1.602176634e-19  # Elementary charge (C)
+        
+        if custom_props:
+            # Custom material properties
+            self.material = "Custom"
+            self.eps = custom_props.get("eps", 11.7 * 8.854e-12)  # Default to Silicon if not provided
+        else:
+            # Predefined material properties
+            self.material = material.strip().title()
+            if self.material not in self.MATERIAL_PROPERTIES:
+                raise ValueError(f"Material '{self.material}' not supported. Choose from {list(self.MATERIAL_PROPERTIES.keys())}.")
+            props = self.MATERIAL_PROPERTIES[self.material]
+            
+            self.eps = props["eps"]  # ✅ Assign permittivity correctly
+            
         # Validate temperature to ensure it is in Kelvin
         if not (200 <= temperature <= 600):
             raise ValueError(f"Temperature must be in Kelvin (200 K to 600 K). Given: {temperature} K")
@@ -259,8 +279,9 @@ class Diode:
 
     def breakdown_voltage(self, doping_concentration):
         return 1 / (self.q * doping_concentration) * (2 * self.eps * self.q * doping_concentration ** 2)
-
+    
     def thermal_noise(self, resistance, bandwidth=1e6):
+        """Calculate thermal noise voltage (Johnson-Nyquist noise)."""
         return np.sqrt(4 * self.k * self.temperature * resistance * bandwidth)
 
     def shot_noise(self, dc_current, bandwidth=1e6):
@@ -298,6 +319,87 @@ class Diode:
         plt.legend(fontsize=12)
         plt.tight_layout()
         plt.show()
+
+    def plot_conductance_vs_voltage(diode, voltage_range=(-2, 2), steps=1000):
+        data = diode.calculate_vi(voltage_range, steps)
+        voltages = np.array(data["voltages"])
+        currents = np.array(data["currents"])
+        conductance = np.gradient(currents, voltages)  # Numerical derivative
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(voltages, conductance, label="Conductance (dI/dV)", color="red")
+        plt.xlabel("Voltage (V)")
+        plt.ylabel("Conductance (Siemens)")
+        plt.title(f"Differential Conductance vs. Voltage ({diode.material})")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+    def plot_bandgap_vs_temperature(diode, temperature_range=(200, 600)):
+        temperatures = np.linspace(temperature_range[0], temperature_range[1], 100)
+        k = 8.617333262145e-5  # Boltzmann constant in eV/K
+        bandgaps = diode.bandgap_energy - (0.0007 * (temperatures - 300))  # Linear approximation
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(temperatures, bandgaps, label="Bandgap Energy (eV)", color="purple")
+        plt.xlabel("Temperature (K)")
+        plt.ylabel("Bandgap Energy (eV)")
+        plt.title(f"Bandgap Energy vs Temperature ({diode.material})")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+    def plot_reverse_breakdown(self, voltage_range=None, steps=500):
+        """Plot the reverse breakdown region of the diode."""
+        if voltage_range is None:
+            voltage_range = (-self.breakdown_voltage - 50, -self.breakdown_voltage + 10)
+
+        data = self.calculate_vi(voltage_range, steps)
+        
+        plt.figure(figsize=(8, 5))
+        plt.plot(data["voltages"], data["currents"], label="Reverse Breakdown", color="brown")
+        plt.xlabel("Voltage (V)")
+        plt.ylabel("Current (A)")
+        plt.title(f"Reverse Breakdown Region ({self.material})")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+
+    def plot_junction_capacitance_vs_voltage(self, voltage_range=None, steps=500):
+        """Plot Junction Capacitance vs Reverse Voltage."""
+        if voltage_range is None:
+            voltage_range = (-self.breakdown_voltage, 0)  # Correctly access self.breakdown_voltage
+
+        voltages = np.linspace(voltage_range[0], voltage_range[1], steps)
+        capacitances = self.junction_capacitance(area=1e-6, width=1e-6) / np.sqrt(1 - (voltages / self.breakdown_voltage))
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(voltages, capacitances, label="Junction Capacitance", color="cyan")
+        plt.xlabel("Reverse Voltage (V)")
+        plt.ylabel("Capacitance (F)")
+        plt.title(f"Junction Capacitance vs Reverse Voltage ({self.material})")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+    def plot_drift_diffusion_currents(diode):
+        electric_fields = np.linspace(0, 1e5, 100)
+        diffusion_gradients = np.linspace(0, 1e6, 100)
+
+        drift_currents = diode.drift_current(electric_fields)
+        diffusion_currents = diode.diffusion_current(diffusion_gradients)
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(electric_fields, drift_currents, label="Drift Current", color="blue")
+        plt.plot(diffusion_gradients, diffusion_currents, label="Diffusion Current", color="green")
+        plt.xlabel("Field Strength / Charge Gradient")
+        plt.ylabel("Current (A)")
+        plt.title(f"Drift & Diffusion Currents ({diode.material})")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
 
     def __repr__(self):
         return (
