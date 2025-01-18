@@ -4,10 +4,14 @@ from matplotlib.animation import FuncAnimation
 from datetime import datetime
 from math import pi
 import csv
+from dataclasses import dataclass
+from typing import Dict, Any
+
 
 
 class Diode:
     BOLTZMANN_CONSTANT = 1.380649e-23  # in J/K
+    ELECTRON_CHARGE = 1.602176634e-19  # C
     MATERIAL_PROPERTIES = {
         "Silicon": {
             "vt": 0.026,
@@ -17,6 +21,7 @@ class Diode:
             "breakdown_voltage": 1000,  # Reverse breakdown voltage (V)
             "bandgap_energy": 1.12,  # Bandgap energy (eV)
             "eps": 11.7 * 8.854e-12,  # Permittivity of Silicon (F/m)
+            "mobility_300": 1400,  # cm²/V·s
         },
         "Germanium": {
             "vt": 0.0258,
@@ -26,6 +31,8 @@ class Diode:
             "breakdown_voltage": 300,  # Reverse breakdown voltage (V)
             "bandgap_energy": 0.66,  # Bandgap energy (eV)
             "eps": 16.0 * 8.854e-12,  # Permittivity of Germanium (F/m)
+            "mobility_300": 3900,  # cm²/V·s
+
         },
         "Gallium Arsenide": {
             "vt": 0.027,  # Thermal voltage at 300 K
@@ -35,6 +42,7 @@ class Diode:
             "breakdown_voltage": 500,  # Reverse breakdown voltage (V)
             "bandgap_energy": 1.42,  # Bandgap energy (eV)
             "eps": 12.9 * 8.854e-12,  # Permittivity of GaAs (F/m)
+            "mobility_300": 8500,  # cm²/V·s
         },
     }
 
@@ -406,3 +414,443 @@ class Diode:
             f"Diode(material={self.material}, ideality_factor={self.ideality_factor}, "
             f"temperature={self.temperature} K)"
         )
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Dict, Tuple, List
+from dataclasses import dataclass
+
+@dataclass
+class TemperatureEffects:
+    """Container for temperature-dependent parameters."""
+    bandgap: float
+    mobility: float
+    carrier_concentration: float
+    resistivity: float
+    thermal_conductivity: float
+    diffusion_coefficient: float
+
+@dataclass
+class DiodeConstants:
+    """Physical constants used in semiconductor calculations."""
+    BOLTZMANN = 1.380649e-23  # Boltzmann constant [J/K]
+    ELECTRON_CHARGE = 1.602176634e-19  # Elementary charge [C]
+    ROOM_TEMP = 300.0  # Room temperature [K]
+
+class DiodeforTemp:
+    def __init__(self, material, temperature=300, custom_props=None):
+        """Initialize diode with corrected temperature handling."""
+        self.constants = DiodeConstants()
+        self._validate_temperature(temperature)
+        self.temperature = temperature
+        
+        # Initialize material properties (existing code remains the same)
+        if custom_props:
+            self._init_custom_properties(custom_props)
+        else:
+            self._init_material_properties(material)
+            
+        # Calculate temperature-dependent parameters
+        self.update_temperature_parameters()
+    
+    def _validate_temperature(self, temperature: float) -> None:
+        """Validate temperature is within physical bounds."""
+        if not (0 < temperature < 1000):
+            raise ValueError(
+                f"Temperature must be between 0K and 1000K. Got: {temperature}K"
+            )
+    
+    def update_temperature_parameters(self) -> None:
+        """Update all temperature-dependent parameters."""
+        # Thermal voltage calculation (kT/q)
+        self.vt = (self.constants.BOLTZMANN * self.temperature) / self.constants.ELECTRON_CHARGE
+        
+        # Update temperature-dependent saturation current
+        self.isat_t = self.calculate_saturation_current(self.temperature)
+        
+        # Update other temperature-dependent parameters
+        self.update_bandgap()
+        self.update_mobility()
+    
+    def calculate_saturation_current(self, temperature: float) -> float:
+        """
+        Calculate temperature-dependent saturation current.
+        
+        Args:
+            temperature: Operating temperature [K]
+            
+        Returns:
+            float: Temperature-corrected saturation current [A]
+        """
+        k = self.constants.BOLTZMANN
+        q = self.constants.ELECTRON_CHARGE
+        t_ratio = temperature / self.constants.ROOM_TEMP
+        
+        # Temperature dependence of bandgap
+        eg_t = self.bandgap_energy * (1 - 0.0002677 * (temperature - self.constants.ROOM_TEMP))
+        
+        # Calculate temperature-dependent saturation current
+        isat_t = self.isat * (t_ratio ** 3) * np.exp(
+            (q * eg_t / (2 * k)) * (1/self.constants.ROOM_TEMP - 1/temperature)
+        )
+        
+        return isat_t
+    
+    def update_bandgap(self) -> None:
+        """Update temperature-dependent bandgap."""
+        # Varshni equation parameters (material dependent)
+        alpha = self.get_varshni_parameters()['alpha']
+        beta = self.get_varshni_parameters()['beta']
+        
+        # Varshni equation for temperature-dependent bandgap
+        self.bandgap_t = self.bandgap_energy - (
+            (alpha * self.temperature ** 2) / (self.temperature + beta)
+        )
+    
+    def update_mobility(self) -> None:
+        """Update temperature-dependent carrier mobility."""
+        # Power law approximation for mobility
+        self.mobility_t = self.mobility_300 * (self.temperature / 300) ** (-2.42)
+    
+    def calculate_vi(self, voltage_range=(-2, 2), steps=1000):
+        """Calculate V-I characteristics with corrected temperature dependence."""
+        # Use instance thermal voltage calculated from temperature
+        vt = self.vt
+        isat_t = self.isat_t  # Use temperature-corrected saturation current
+        
+        voltages = np.linspace(voltage_range[0], voltage_range[1], steps)
+        currents = np.zeros_like(voltages)
+        
+        # Vectorized calculations for different regions
+        forward_mask = voltages >= 0
+        reverse_mask = ~forward_mask
+        
+        # Forward bias region
+        currents[forward_mask] = isat_t * (
+            np.exp(voltages[forward_mask] / (self.ideality_factor * vt)) - 1
+        )
+        
+        # Reverse bias region with temperature-dependent breakdown
+        breakdown_voltage_t = self.breakdown_voltage * (1 + 0.0006 * (self.temperature - 300))
+        reverse_voltages = voltages[reverse_mask]
+        
+        currents[reverse_mask] = -isat_t * np.ones_like(reverse_voltages)
+        breakdown_mask = reverse_voltages < -breakdown_voltage_t
+        if np.any(breakdown_mask):
+            currents[reverse_mask][breakdown_mask] = -isat_t * (
+                1 + np.abs(reverse_voltages[breakdown_mask] + breakdown_voltage_t)
+            )
+        
+        return {"voltages": voltages, "currents": currents}
+    
+    def get_varshni_parameters(self) -> Dict[str, float]:
+        """Get Varshni parameters for bandgap temperature dependence."""
+        # Material-specific Varshni parameters
+        params = {
+            "Silicon": {"alpha": 4.73e-4, "beta": 636},
+            "Germanium": {"alpha": 4.77e-4, "beta": 235},
+            "Gallium Arsenide": {"alpha": 5.41e-4, "beta": 204},
+        }
+        return params.get(self.material, {"alpha": 4.73e-4, "beta": 636})  # Default to Silicon
+    
+    def get_thermal_resistance(self, area: float, thickness: float) -> float:
+        """
+        Calculate thermal resistance of the device.
+        
+        Args:
+            area: Junction area [m²]
+            thickness: Device thickness [m]
+            
+        Returns:
+            float: Thermal resistance [K/W]
+        """
+        # Material-specific thermal conductivity [W/(m·K)]
+        thermal_conductivity = {
+            "Silicon": 148,
+            "Germanium": 60,
+            "Gallium Arsenide": 55
+        }.get(self.material, 148)  # Default to Silicon
+        
+        return thickness / (thermal_conductivity * area)
+    
+    def calculate_junction_temperature(
+        self, ambient_temp: float, power_dissipation: float, 
+        thermal_resistance: float
+    ) -> float:
+        """
+        Calculate junction temperature based on power dissipation.
+        
+        Args:
+            ambient_temp: Ambient temperature [K]
+            power_dissipation: Power dissipated in device [W]
+            thermal_resistance: Thermal resistance [K/W]
+            
+        Returns:
+            float: Junction temperature [K]
+        """
+        return ambient_temp + (power_dissipation * thermal_resistance)
+    
+class DiodeTemperature(Diode):
+    """Extension of Diode class with advanced temperature effects."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Retrieve mobility_300 from material properties
+        if self.material in self.MATERIAL_PROPERTIES:
+            self.mobility_300 = self.MATERIAL_PROPERTIES[self.material].get("mobility_300")
+            if self.mobility_300 is None:
+                raise ValueError(f"'mobility_300' is missing for material '{self.material}'.")
+        else:
+            raise ValueError(f"Material '{self.material}' not found in MATERIAL_PROPERTIES.")
+
+        # Compute temperature effects
+        self.temp_effects = self.calculate_temperature_effects()
+
+    def get_varshni_parameters(self):
+        """Return Varshni parameters (alpha and beta) for the material."""
+        varshni_params = {
+            "Silicon": {"alpha": 4.73e-4, "beta": 636},  # Values in eV/K and K
+            "Germanium": {"alpha": 4.77e-4, "beta": 235},
+            "Gallium Arsenide": {"alpha": 5.41e-4, "beta": 204},
+        }
+        if self.material not in varshni_params:
+            raise ValueError(f"Varshni parameters not defined for material '{self.material}'.")
+        return varshni_params[self.material]
+
+    def get_effective_mass_ratio(self):
+        """Return the effective mass ratio (m*/m0) for the material."""
+        effective_mass_ratios = {
+            "Silicon": 1.08,  # Electron effective mass in m*/m0
+            "Germanium": 0.56,
+            "Gallium Arsenide": 0.067,
+        }
+        if self.material not in effective_mass_ratios:
+            raise ValueError(f"Effective mass ratio not defined for material '{self.material}'.")
+        return effective_mass_ratios[self.material]
+    
+    def get_thermal_conductivity_300K(self):
+        """Return the thermal conductivity at 300 K for the material."""
+        thermal_conductivities = {
+            "Silicon": 148,  # W/m·K
+            "Germanium": 60,
+            "Gallium Arsenide": 55,
+        }
+        if self.material not in thermal_conductivities:
+            raise ValueError(f"Thermal conductivity not defined for material '{self.material}'.")
+        return thermal_conductivities[self.material]
+
+    def get_thermal_resistance(self, area, thickness):
+        """Calculate thermal resistance (K/W) based on area and thickness."""
+        thermal_conductivity = self.get_thermal_conductivity_300K()
+        return thickness / (thermal_conductivity * area)
+
+    def calculate_junction_temperature(self, ambient_temp, power, thermal_resistance):
+        """Calculate junction temperature."""
+        return ambient_temp + (power * thermal_resistance)
+
+    def calculate_leakage_current(self):
+        """Calculate leakage current based on reverse saturation current and temperature."""
+        isat_t = self.calculate_saturation_current(self.temperature)
+        return isat_t  # Leakage current is approximately equal to saturation current in reverse bias
+
+    def calculate_breakdown_voltage_temp(self):
+        """Calculate temperature-dependent breakdown voltage."""
+        # Approximation: Linear decrease with temperature
+        temp_coeff = -0.001  # Example coefficient (V/K)
+        return self.breakdown_voltage + (self.temperature - 300) * temp_coeff
+    
+    def calculate_lifetime_factor(self):
+        """Calculate relative lifetime factor based on temperature."""
+        activation_energy = 0.7  # Example value in eV
+        k = 8.617333262145e-5  # Boltzmann constant in eV/K
+        return np.exp(-activation_energy / (k * self.temperature))
+
+    def calculate_temperature_effects(self) -> TemperatureEffects:
+        """Calculate all temperature-dependent parameters."""
+        bandgap = self.calculate_temperature_bandgap()
+        mobility = self.calculate_temperature_mobility()
+        carrier_conc = self.calculate_carrier_concentration(bandgap=bandgap)  # Pass bandgap explicitly
+        resistivity = self.calculate_resistivity(mobility, carrier_conc)
+        thermal_cond = self.calculate_thermal_conductivity()
+        diffusion_coeff = self.calculate_diffusion_coefficient(mobility)
+
+        return TemperatureEffects(
+            bandgap=bandgap,
+            mobility=mobility,
+            carrier_concentration=carrier_conc,
+            resistivity=resistivity,
+            thermal_conductivity=thermal_cond,
+            diffusion_coefficient=diffusion_coeff,
+        )
+
+    def calculate_temperature_bandgap(self) -> float:
+        """Calculate temperature-dependent bandgap using advanced model."""
+        # Varshni parameters
+        params = self.get_varshni_parameters()
+        alpha, beta = params['alpha'], params['beta']
+        
+        # Advanced bandgap model including strain effects
+        strain_factor = 1.0  # Can be modified for strained semiconductors
+        return (self.bandgap_energy * strain_factor - 
+                (alpha * self.temperature**2) / (self.temperature + beta))
+    
+    def calculate_temperature_mobility(self) -> float:
+        """Calculate temperature-dependent carrier mobility."""
+        # Advanced mobility model including various scattering mechanisms
+        phonon_scattering = (self.temperature / 300) ** (-2.42)
+        ionized_impurity = (self.temperature / 300) ** (3/2)
+        
+        # Combined mobility effect
+        return self.mobility_300 * (1 / (1/phonon_scattering + 1/ionized_impurity))
+    
+    def calculate_carrier_concentration(self, bandgap=None):
+        """Calculate intrinsic carrier concentration."""
+        if bandgap is None:
+            bandgap = self.calculate_temperature_bandgap()  # Use bandgap if not provided
+
+        effective_mass_ratio = self.get_effective_mass_ratio()
+        k = 8.617333262145e-5  # Boltzmann constant in eV/K
+        nc_nv = 2.5e19 * (self.temperature / 300) ** 3 * effective_mass_ratio
+
+        return nc_nv * np.exp(-bandgap / (2 * k * self.temperature))
+
+    
+    def calculate_resistivity(self, mobility: float, carrier_conc: float) -> float:
+        """Calculate temperature-dependent resistivity."""
+        return 1 / (self.ELECTRON_CHARGE * mobility * carrier_conc)
+    
+    def calculate_thermal_conductivity(self) -> float:
+        """Calculate temperature-dependent thermal conductivity."""
+        # Material-specific parameters
+        k300 = self.get_thermal_conductivity_300K()
+        return k300 * (300 / self.temperature) ** 1.5
+    
+    def calculate_diffusion_coefficient(self, mobility: float) -> float:
+        """Calculate temperature-dependent diffusion coefficient."""
+        # Einstein relation
+        return mobility * self.BOLTZMANN_CONSTANT * self.temperature / self.ELECTRON_CHARGE
+    
+    # Visualization Methods
+    
+    def plot_comprehensive_temperature_effects(self, temp_range: Tuple[float, float] = (250, 450)):
+        """Create a comprehensive visualization of temperature effects."""
+        temperatures = np.linspace(temp_range[0], temp_range[1], 100)
+        
+        # Calculate parameters across temperature range
+        params = {
+            'Bandgap (eV)': [],
+            'Mobility (cm²/V·s)': [],
+            'Carrier Conc. (cm⁻³)': [],
+            'Resistivity (Ω·cm)': [],
+            'Thermal Cond. (W/m·K)': [],
+            'Diffusion Coeff. (cm²/s)': []
+        }
+        
+        for temp in temperatures:
+            self.temperature = temp
+            effects = self.calculate_temperature_effects()
+            params['Bandgap (eV)'].append(effects.bandgap)
+            params['Mobility (cm²/V·s)'].append(effects.mobility)
+            params['Carrier Conc. (cm⁻³)'].append(effects.carrier_concentration)
+            params['Resistivity (Ω·cm)'].append(effects.resistivity)
+            params['Thermal Cond. (W/m·K)'].append(effects.thermal_conductivity)
+            params['Diffusion Coeff. (cm²/s)'].append(effects.diffusion_coefficient)
+        
+        # Create subplots
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        fig.suptitle(f'Temperature Effects in {self.material} Diode', fontsize=16)
+        
+        for (param, values), ax in zip(params.items(), axes.flat):
+            ax.plot(temperatures, values, 'b-')
+            ax.set_xlabel('Temperature (K)')
+            ax.set_ylabel(param)
+            ax.grid(True)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_vi_temperature_family(self, temp_range: List[float], voltage_range: Tuple[float, float]):
+        """Plot family of V-I curves at different temperatures."""
+        plt.figure(figsize=(10, 6))
+        
+        for temp in temp_range:
+            self.temperature = temp
+            data = self.calculate_vi(voltage_range)
+            plt.semilogy(data['voltages'], np.abs(data['currents']), 
+                        label=f'T = {temp}K')
+        
+        plt.grid(True)
+        plt.xlabel('Voltage (V)')
+        plt.ylabel('Current (A)')
+        plt.title(f'Temperature Dependence of {self.material} Diode V-I Characteristics')
+        plt.legend()
+        plt.show()
+    
+    def plot_power_dissipation_effects(self, voltage_range: Tuple[float, float], ambient_temp: float = 300, steps: int = 1000):
+        """Visualize power dissipation and temperature effects."""
+        # Generate voltage and current data with the same number of steps
+        voltages = np.linspace(voltage_range[0], voltage_range[1], steps)
+        vi_data = self.calculate_vi(voltage_range, steps)
+        currents = vi_data["currents"]
+
+        # Calculate power dissipation
+        power = np.array(voltages) * np.array(currents)
+
+        # Calculate junction temperature
+        thermal_resistance = self.get_thermal_resistance(1e-6, 1e-4)  # Example area and thickness
+        junction_temps = [self.calculate_junction_temperature(ambient_temp, p, thermal_resistance) for p in power]
+
+        # Plot power dissipation and junction temperature
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        # Power dissipation plot
+        ax1.plot(voltages, power * 1000, 'r-')  # Convert to mW
+        ax1.set_xlabel('Voltage (V)')
+        ax1.set_ylabel('Power Dissipation (mW)')
+        ax1.grid(True)
+
+        # Junction temperature plot
+        ax2.plot(voltages, junction_temps, 'b-')
+        ax2.set_xlabel('Voltage (V)')
+        ax2.set_ylabel('Junction Temperature (K)')
+        ax2.grid(True)
+
+        plt.suptitle('Power Dissipation and Junction Temperature Effects')
+        plt.tight_layout()
+        plt.show()
+
+    def plot_temperature_reliability_indicators(self, temp_range: Tuple[float, float]):
+        """Plot reliability indicators vs temperature."""
+        temperatures = np.linspace(temp_range[0], temp_range[1], 100)
+        
+        # Calculate reliability indicators
+        leakage_current = []
+        breakdown_voltage = []
+        lifetime_factor = []
+        
+        for temp in temperatures:
+            self.temperature = temp
+            leakage_current.append(self.calculate_leakage_current())
+            breakdown_voltage.append(self.calculate_breakdown_voltage_temp())
+            lifetime_factor.append(self.calculate_lifetime_factor())
+        
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+        
+        ax1.semilogy(temperatures, leakage_current)
+        ax1.set_xlabel('Temperature (K)')
+        ax1.set_ylabel('Leakage Current (A)')
+        ax1.grid(True)
+        
+        ax2.plot(temperatures, breakdown_voltage)
+        ax2.set_xlabel('Temperature (K)')
+        ax2.set_ylabel('Breakdown Voltage (V)')
+        ax2.grid(True)
+        
+        ax3.plot(temperatures, lifetime_factor)
+        ax3.set_xlabel('Temperature (K)')
+        ax3.set_ylabel('Relative Lifetime')
+        ax3.grid(True)
+        
+        plt.suptitle('Temperature-Dependent Reliability Indicators')
+        plt.tight_layout()
+        plt.show()
