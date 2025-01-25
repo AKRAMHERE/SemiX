@@ -21,7 +21,7 @@ We provide security updates for the latest stable release. Older versions may no
 ## **Reporting a Vulnerability**
 If you discover a security vulnerability in **SemiX**, please report it privately and responsibly. **Do not** disclose security issues publicly before a fix is available.
 
-- **Contact:** [your_email@domain.com]  
+- **Contact:** [syedakram2002@gmail.com]  
 - **Response Time:** We will acknowledge reports within **48 hours** and provide updates as we investigate and resolve the issue.
 
 ## **Security Best Practices**
