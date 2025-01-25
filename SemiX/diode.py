@@ -488,6 +488,7 @@ class Diode:
         """
         data = self.calculate_vi(voltage_range, steps)
         voltages = np.array(data["voltages"])
+        currents = np.array(data["currents"])
         power = voltages * currents
 
         plt.figure(figsize=(12, 6))
