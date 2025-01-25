@@ -340,50 +340,6 @@ class Diode:
         else:
             print("All material properties are within typical ranges.")
 
-    def animate_vi(
-        self,
-        voltage_range: Tuple[float, float] = (-1000, 2),
-        steps: int = 1000,
-        temperature_range: Tuple[float, float] = (250, 400),
-        interval: int = 500
-    ) -> None:
-        """
-        Animate the diode's V-I characteristics across a temperature range.
-
-        Args:
-            voltage_range (Tuple[float, float]): Range of voltages.
-            steps (int): Number of points in the V range.
-            temperature_range (Tuple[float, float]): Range of temperatures in Kelvin.
-            interval (int): Interval between animation frames in ms.
-        """
-        fig, ax = plt.subplots(figsize=(12, 6))
-        line, = ax.plot([], [], lw=2)
-        ax.set_xlim(voltage_range[0], voltage_range[1])
-        ax.set_ylim(-1e-12, 1e-3)
-        ax.set_xlabel("Voltage (V)", fontsize=14)
-        ax.set_ylabel("Current (A)", fontsize=14)
-        ax.set_title("Temperature-dependent V-I Characteristics", fontsize=16)
-
-        temps = np.linspace(temperature_range[0], temperature_range[1], 50)
-
-        def init():
-            line.set_data([], [])
-            return line,
-
-        def update(frame):
-            self.temperature = temps[frame]
-            data = self.calculate_vi(voltage_range, steps)
-            line.set_data(data["voltages"], data["currents"])
-            ax.set_title(f"V-I at {self.temperature:.1f} K", fontsize=14)
-            return line,
-
-        animation = FuncAnimation(
-            fig, update, frames=len(temps),
-            init_func=init, blit=True, interval=interval
-        )
-        self.log_result(f"Generated V-I animation for T range: {temperature_range}")
-        plt.show()
-
     def plot_material_comparison(self) -> None:
         """
         Compare predefined material properties in a spider chart.
@@ -518,7 +474,7 @@ class Diode:
         plt.grid(True)
         plt.show()
 
-    def plot_vi_with_power(
+    def plot_v_with_power(
         self,
         voltage_range: Tuple[float, float] = (-1000, 2),
         steps: int = 1000
@@ -532,11 +488,9 @@ class Diode:
         """
         data = self.calculate_vi(voltage_range, steps)
         voltages = np.array(data["voltages"])
-        currents = np.array(data["currents"])
         power = voltages * currents
 
         plt.figure(figsize=(12, 6))
-        plt.plot(voltages, currents, label="Current (A)", color="blue", linewidth=2)
         plt.plot(voltages, power, label="Power (W)", linestyle="--",
                  color="green", linewidth=2)
         plt.xlabel("Voltage (V)", fontsize=14)
