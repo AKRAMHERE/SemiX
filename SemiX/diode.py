@@ -488,15 +488,17 @@ class Diode:
         """
         data = self.calculate_vi(voltage_range, steps)
         voltages = np.array(data["voltages"])
+        print(voltages)
         currents = np.array(data["currents"])
+        print(currents)
         power = voltages * currents
-
+        print(power)
         plt.figure(figsize=(12, 6))
         plt.plot(voltages, power, label="Power (W)", linestyle="--",
                  color="green", linewidth=2)
         plt.xlabel("Voltage (V)", fontsize=14)
-        plt.ylabel("Current (A) & Power (W)", fontsize=14)
-        plt.title(f"V-I and Power Dissipation of {self.material}",
+        plt.ylabel(" Power (W)", fontsize=14)
+        plt.title(f"Power Dissipation of {self.material}",
                   fontsize=16, fontweight="bold")
         plt.grid(True, linestyle="--", alpha=0.7)
         plt.axhline(0, color="black", linewidth=0.8, linestyle="--")
@@ -542,7 +544,7 @@ class Diode:
         Plot a simple bandgap vs. temperature trend (linear approximation).
 
         Args:
-            diode (Diode): Diode instance for reference bandgap.
+            self: Diode instance for reference bandgap.
             temperature_range (Tuple[float, float]): Range of temperatures in Kelvin.
         """
         temperatures = np.linspace(temperature_range[0], temperature_range[1], 100)
