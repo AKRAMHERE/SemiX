@@ -152,16 +152,16 @@ class Diode:
             float: The temperature-adjusted saturation current in Amperes.
         """
         # Boltzmann constant in eV/K:
-        k_ev = 8.617333262145e-5
+        k_ev = 8.617333262145*10e-5
         isat_300 = self.isat  # Baseline at 300K
         eg = self.bandgap_energy
 
         t_ratio = temperature / 300.0
         # Temperature-dependent saturation current:
-        isat_t = isat_300 * (
-            (t_ratio ** 3) *
-            np.exp((-eg / k_ev) * ((1 / temperature) - (1 / 300.0)))
-        )
+        isat_t = isat_300 * ((t_ratio ** 3) * np.exp((-eg / k_ev) * ((1 / temperature) - (1 / 300.0))))
+
+        #isat_t = isat_300 * ((temperature / 300.0) ** 3) * np.exp(-eg / (k_ev * temperature))
+
         return isat_t
 
     def calculate_vi(
