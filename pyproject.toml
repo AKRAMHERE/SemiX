@@ -1,8 +1,8 @@
 [project]
 name = "SemiX"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
-  { name="Syed Akram", email="syedakram2002@gmail.com" }, # Update with your real email
+  { name="Syed Akram", email="syedakram2002@gmail.com" }, 
 ]
 description = "An open-source Python package for semiconductor device simulation and analysis."
 readme = "README.md"
