@@ -35,10 +35,8 @@ dependencies = [
 dev = ["pytest", "black", "flake8"]
 
 [project.urls]
-Homepage = "https://github.com/syedakram/SemiX"
-Documentation = "https://github.com/syedakram/SemiX/wiki"
-Issues = "https://github.com/syedakram/SemiX/issues"
-Source = "https://github.com/syedakram/SemiX"
+Homepage = "https://github.com/AKRAMHERE/SemiX"
+Source = "https://github.com/AKRAMHERE/SemiX"
 
 [build-system]
 requires = ["setuptools", "wheel"]
