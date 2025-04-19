@@ -114,6 +114,5 @@ This project is licensed under the **MIT License**, allowing you to freely use, 
 ## **Join the Community**
 Feel free to ask questions, discuss ideas, or share feedback:
 - GitHub Discussions
-- Slack/Discord (planned)
 
 Together, let’s make semiconductor simulation accessible for everyone! 🌟
